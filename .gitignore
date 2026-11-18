@@ -5,8 +5,15 @@ __pycache__/
 .DS_Store
 Student folder/
 data/
-*.pdf
+PathSnap_student_materials/
 *.xlsx
 results/features_*.pkl
 artifacts/models/RandomForest.joblib
 artifacts/models/KNN.joblib
+DESIGN copy*.md
+mlflow.db
+mlruns/
+evaluator_test/
+results/api_server.log
+DESIGN.md
+teammate_zips/
