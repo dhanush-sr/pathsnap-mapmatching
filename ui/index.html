@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PathSnap · Map-matching evaluator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wdth,wght@62.5..100,400..700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --paper: #f4f5f2; --sheet: #fff; --rail: #e8eae5; --hover: #eceee9;
+    --rule: #d8dbd3; --rule-strong: #b8bcb2;
+    --ink: #1c2433; --ink-2: #414b5e; --ink-3: #5c6474;
+    --accent: #0b5e57; --accent-deep: #084a44; --accent-wash: #e3efed;
+    --strong: #1f6b45; --fail: #b42318; --fail-wash: #fbeceb;
+    --sans: "Noto Sans", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 15px/1.55 var(--sans); color: var(--ink); background: var(--paper); font-variant-numeric: tabular-nums;
+         -webkit-font-smoothing: antialiased; display: grid; grid-template-columns: 300px 1fr; }
+  button, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  ::selection { background: var(--accent-wash); color: var(--accent-deep); }
+  [hidden] { display: none !important; }
+
+  /* labels and stamps */
+  .label { font: 500 11.5px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .stamp { display: inline-flex; align-items: center; gap: 4px; font: 700 12px/1 var(--sans); font-stretch: 72%;
+           letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; padding: 4px 7px;
+           border: 1.5px solid currentColor; border-radius: 4px; color: var(--ink-2); position: relative; overflow: hidden; }
+  .stamp[data-tone="done"] { color: var(--strong); }
+  .stamp[data-tone="failed"] { color: var(--fail); border-width: 2px; }
+  .stamp[data-tone="skipped"] { color: var(--ink-3); border-style: dotted; }
+  .stamp[data-tone="queued"] { color: var(--accent); border-style: dotted; }
+  .stamp[data-tone="running"] { color: var(--accent); }
+  .stamp[data-tone="running"]::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+           background: linear-gradient(90deg, transparent, rgba(11,94,87,.2), transparent); animation: ink 1.4s cubic-bezier(.22,1,.36,1) infinite; }
+  @keyframes ink { to { transform: translateX(100%); } }
+  .press { animation: press 160ms cubic-bezier(.16,1,.3,1) both; }
+  @keyframes press { from { transform: scale(1.1) rotate(-1.5deg); opacity: .35; } to { transform: none; opacity: 1; } }
+
+  /* rail */
+  aside { background: var(--rail); border-right: 1px solid var(--rule); display: flex; flex-direction: column; height: 100vh; position: sticky; top: 0; }
+  .brand { height: 72px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--rule); }
+  .mark { width: 34px; height: 34px; border-radius: 8px; background: var(--ink); display: grid; place-items: center; }
+  .brand b { display: block; font-size: 19px; letter-spacing: .03em; line-height: 1; }
+  .brand small { display: block; margin-top: 6px; font: 10.5px/1 var(--mono); letter-spacing: .2em; text-transform: uppercase; color: var(--ink-3); }
+  .group { padding: 18px 16px 0; }
+  .group-head { display: flex; align-items: center; gap: 10px; margin: 0 4px 10px; }
+  .group-head .line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--rule-strong), transparent); }
+  .field { position: relative; }
+  .field input { width: 100%; height: 44px; padding: 0 12px; border: 1px solid var(--rule-strong); border-radius: 8px;
+                 background: var(--sheet); font: 14px var(--mono); }
+  .field input:focus { border-color: var(--accent); outline: none; }
+  .conn { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+  .btn { height: 36px; padding: 0 14px; border: 1px solid var(--rule-strong); border-radius: 6px; background: var(--sheet);
+         font-weight: 500; cursor: pointer; transition: background-color 150ms; }
+  .btn:hover { background: var(--hover); }
+  .btn:active { transform: translateY(1px); }
+  .trips-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .trips { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0 12px 12px; display: grid; gap: 4px; align-content: start; }
+  .trip { width: 100%; display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px 10px 14px; border: 0;
+          border-radius: 6px; background: transparent; cursor: pointer; position: relative; transition: background-color 150ms; }
+  .trip:hover { background: var(--hover); }
+  .trip[aria-selected="true"] { background: linear-gradient(90deg, rgba(11,94,87,.14), rgba(11,94,87,.03) 70%, transparent); }
+  .trip[aria-selected="true"]::before { content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+  .trip .t { flex: 1; min-width: 0; }
+  .trip code { font: 500 14px var(--mono); color: var(--ink); }
+  .trip span { display: block; font-size: 12.5px; color: var(--ink-3); }
+  .trip .res { font: 500 12px var(--mono); color: var(--strong); }
+  .empty-rail { margin: 0 4px; padding: 12px 14px; border: 1.5px dashed var(--rule-strong); border-radius: 8px; color: var(--ink-2); font-size: 13.5px; background: var(--sheet); }
+  .run { padding: 14px 16px 18px; border-top: 1px solid var(--rule); }
+  .primary { width: 100%; height: 44px; border: 0; border-radius: 6px; background: var(--accent); color: #fff; font-weight: 600;
+             cursor: pointer; transition: background-color 150ms; }
+  .primary:hover:not(:disabled) { background: var(--accent-deep); }
+  .primary:active:not(:disabled) { transform: translateY(1px); }
+  .primary:disabled { opacity: .45; cursor: not-allowed; }
+  .hint { margin: 8px 2px 0; font-size: 12px; color: var(--ink-3); text-align: center; }
+  kbd { font: 11px var(--mono); padding: 1px 5px; border: 1px solid var(--rule-strong); border-radius: 4px; background: var(--sheet); }
+
+  /* page */
+  main { height: 100vh; overflow-y: auto; min-width: 0; }
+  .page { padding: 32px 40px 72px; display: grid; gap: 20px; }
+  .head .rule { display: block; width: 48px; height: 3px; border-radius: 3px; background: var(--accent); margin-bottom: 14px; }
+  .head .row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+  .head h1 { margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -.02em; }
+  .lede { margin: 10px 0 0; max-width: 78ch; color: var(--ink-2); font-size: 15.5px; }
+  .sheet { background: var(--sheet); border: 1px solid var(--rule); border-radius: 10px; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .stat { padding: 18px 22px; border-left: 1px solid var(--rule); min-width: 0; }
+  .stat:first-child { border-left: 0; }
+  .stat .n { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; margin-top: 6px; }
+  .stat .note { font: 12.5px var(--mono); color: var(--ink-3); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat .n.up { color: var(--strong); }
+  .mapwrap { position: relative; height: clamp(360px, calc(100vh - 330px), 720px); overflow: hidden; }
+  #map { position: absolute; inset: 0; }
+  .mapwrap.empty .leaflet-control-container { display: none; }
+  .tiles { filter: grayscale(.85) contrast(.9) brightness(1.04); }
+  .note-box { position: absolute; inset: 0; z-index: 700; background: var(--sheet); padding: 16px; display: flex; }
+  .note-box > div { flex: 1; display: grid; place-content: center; text-align: center; border: 2px dashed var(--rule-strong); border-radius: 8px; padding: 24px; }
+  .note-box b { display: block; font-size: 16px; }
+  .note-box p { margin: 4px 0 0; color: var(--ink-2); max-width: 46ch; }
+  .legend { position: absolute; top: 12px; right: 12px; z-index: 600; background: var(--sheet); border: 1px solid var(--rule);
+            border-radius: 8px; padding: 10px 12px; font-size: 13px; display: grid; gap: 6px;
+            box-shadow: 0 1px 2px rgba(28,36,51,.06), 0 6px 20px -8px rgba(28,36,51,.18); }
+  .legend i { display: inline-block; vertical-align: middle; margin-right: 8px; }
+  .k-gps { width: 8px; height: 8px; border-radius: 50%; background: #6f7a79; }
+  .k-route { width: 16px; height: 3px; background: var(--accent); }
+  .k-start { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--strong); }
+  .k-end { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--fail); }
+  .sec-head { display: flex; align-items: baseline; gap: 10px; margin: 8px 0 -8px; }
+  .sec-head h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
+  .sec-head span { color: var(--ink-3); }
+  .tags { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); overflow: hidden; }
+  .tags > div { padding: 12px 16px; border-right: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin: 0 -1px -1px 0; min-width: 0; }
+  .tags .v { margin-top: 2px; font: 15px var(--mono); }
+  .tags .v.dim { color: var(--ink-3); font-family: var(--sans); }
+  .error { padding: 12px 16px; border: 1px solid rgba(180,35,24,.3); background: var(--fail-wash); color: var(--fail); border-radius: 8px; }
+  details summary { padding: 14px 18px; cursor: pointer; font-weight: 600; list-style-position: inside; }
+  details summary .label { margin-left: 8px; font-weight: 500; }
+  .tablewrap { max-height: 360px; overflow: auto; border-top: 1px solid var(--rule); position: relative; }
+  table { width: 100%; border-collapse: collapse; }
+  th { position: sticky; top: 0; z-index: 1; background: var(--sheet); text-align: left; font: 500 11.5px var(--mono);
+       letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 11px 16px; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+  td { padding: 9px 16px; border-bottom: 1px solid var(--rule); font: 13.5px var(--mono); white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:hover td { background: var(--hover); }
+  .num { text-align: right; }
+  .skel { color: transparent !important; border-radius: 4px; background: linear-gradient(90deg, var(--rail) 0%, var(--hover) 40%, var(--rail) 80%);
+          background-size: 200% 100%; animation: shimmer 1.6s ease-in-out infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  @media (prefers-reduced-motion: reduce) { .skel, .press, .stamp[data-tone="running"]::after { animation: none; } }
+  @media (max-width: 1180px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stat:nth-child(3) { border-left: 0; } .stat:nth-child(n+3) { border-top: 1px solid var(--rule); } .page { padding: 28px 28px 64px; } }
+  @media (max-width: 860px) { body { grid-template-columns: 1fr; } aside { position: static; height: auto; } main { height: auto; } .trips { max-height: 300px; } }
+</style>
+</head>
+<body>
+<aside aria-label="Controls">
+  <div class="brand">
+    <span class="mark" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="18" r="2"/><circle cx="19" cy="6" r="2"/><path d="M6.5 16.5 10 12l4 2 3.6-6.6"/></svg></span>
+    <span><b>PathSnap</b><small>Laptop 2 · Evaluator UI</small></span>
+  </div>
+
+  <div class="group">
+    <div class="group-head"><span class="label">Laptop 1 · API endpoint</span><span class="line"></span></div>
+    <div class="field"><input id="api" aria-label="Laptop 1 API endpoint" placeholder="http://192.168.x.x:8000" spellcheck="false" autocomplete="off"></div>
+    <div class="conn"><span id="conn" class="stamp" data-tone="skipped">Not connected</span><button class="btn" id="connect">Connect</button></div>
+  </div>
+
+  <div class="group trips-wrap">
+    <div class="group-head"><span class="label">Evaluation trips</span><span class="label" id="tripCount"></span><span class="line"></span></div>
+    <ul class="trips" id="trips" role="listbox" aria-label="Evaluation trips">
+      <li class="empty-rail">Connect to the API to load the evaluation trips.</li>
+    </ul>
+  </div>
+
+  <div class="run">
+    <button class="primary" id="run" disabled>Run map matching</button>
+    <p class="hint">Select a trip, then run. <kbd>Enter</kbd> also runs.</p>
+  </div>
+</aside>
+
+<main>
+  <div class="page">
+    <header class="head">
+      <span class="rule" aria-hidden="true"></span>
+      <div class="row"><h1 id="title">Map matching</h1><span id="state" class="stamp" data-tone="skipped">Not run</span></div>
+      <p class="lede">Each GPS point is scored against its nearby road segments by the candidate classifier, then an HMM with Viterbi decoding
+        picks one connected route through the road network. The reference route stays on the server; only the scores come back.</p>
+    </header>
+
+    <div class="error" id="error" role="alert" hidden></div>
+
+    <section class="sheet stats" aria-label="Results" aria-live="polite">
+      <div class="stat"><div class="label">Point accuracy · HMM</div><div class="n" id="m1">—</div><div class="note" id="s1">not run yet</div></div>
+      <div class="stat"><div class="label">Classifier only</div><div class="n" id="m2">—</div><div class="note" id="s2">not run yet</div></div>
+      <div class="stat"><div class="label">Route F1</div><div class="n" id="m3">—</div><div class="note" id="s3">not run yet</div></div>
+      <div class="stat"><div class="label">Route continuity</div><div class="n" id="m4">—</div><div class="note" id="s4">not run yet</div></div>
+    </section>
+
+    <section class="sheet mapwrap empty" id="mapwrap" aria-label="Map">
+      <div id="map"></div>
+      <div class="note-box" id="mapNote"><div><b>No route yet</b><p>Pick a trip on the left and press Run map matching. The predicted route and the raw GPS points will appear here.</p></div></div>
+      <div class="legend" id="legend" aria-hidden="true" hidden>
+        <div><i class="k-gps"></i>Raw GPS observations</div>
+        <div><i class="k-route"></i>Predicted route (HMM)</div>
+        <div><i class="k-start"></i>Start <i class="k-end" style="margin-left:10px"></i>End</div>
+      </div>
+    </section>
+
+    <div class="sec-head"><h2>Run details</h2></div>
+    <section class="sheet tags" aria-label="Run details">
+      <div><div class="label">Trip</div><div class="v dim" id="f_trip">none selected</div></div>
+      <div><div class="label">GPS points</div><div class="v dim" id="f_pts">—</div></div>
+      <div><div class="label">Duration</div><div class="v dim" id="f_dur">—</div></div>
+      <div><div class="label">Processing time</div><div class="v dim" id="f_time">not run</div></div>
+      <div><div class="label">Matched segments</div><div class="v dim" id="f_seg">not run</div></div>
+      <div><div class="label">Points scored</div><div class="v dim" id="f_scored">not run</div></div>
+    </section>
+
+    <details class="sheet" id="details">
+      <summary>Matched points<span class="label" id="respMeta">no response yet</span></summary>
+      <div class="tablewrap"><table>
+        <thead><tr><th class="num">Point</th><th class="num">Time (s)</th><th>Latitude, longitude</th><th class="num">Matched arc</th><th class="num">Candidate prob.</th></tr></thead>
+        <tbody id="rows"><tr><td colspan="5" style="font-family:var(--sans);color:var(--ink-3)">Run a trip to list its matched points.</td></tr></tbody>
+      </table></div>
+    </details>
+  </div>
+</main>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const apiInput = $("api");
+apiInput.value = new URLSearchParams(location.search).get("api") || localStorage.getItem("pathsnap_api") || `http://${location.hostname || "localhost"}:8000`;
+let selected = null, layers = null, busy = false;
+const trips = {}, results = {};
+
+const map = L.map("map").setView([20, 0], 2);
+new ResizeObserver(() => map.invalidateSize()).observe($("map"));
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: "&copy; OpenStreetMap contributors", className: "tiles" }).addTo(map);
+
+const base = () => apiInput.value.trim().replace(/\/+$/, "");
+const pct = x => x == null ? "n/a" : (100 * x).toFixed(1) + "%";
+const dur = s => `${Math.floor(s / 60)}m ${String(Math.round(s % 60)).padStart(2, "0")}s`;
+const setText = (id, v, dim = false) => { $(id).textContent = v; $(id).classList.toggle("dim", dim); };
+
+function stamp(el, tone, text, pressIt = false) {
+  el.dataset.tone = tone; el.textContent = text;
+  if (pressIt) { el.classList.remove("press"); void el.offsetWidth; el.classList.add("press"); }
+}
+function showError(msg) { $("error").textContent = msg || ""; $("error").hidden = !msg; }
+
+async function connect() {
+  localStorage.setItem("pathsnap_api", base());
+  stamp($("conn"), "running", "Connecting");
+  try {
+    const r = await fetch(base() + "/trips");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const list = await r.json();
+    stamp($("conn"), "done", "Connected", true);
+    $("tripCount").textContent = `(${list.length})`;
+    $("trips").innerHTML = "";
+    list.forEach(t => {
+      trips[t.trip_id] = t;
+      const li = document.createElement("li");
+      li.innerHTML = `<button class="trip" role="option" aria-selected="false" data-id="${t.trip_id}">
+        <span class="t"><code>${t.trip_id}</code><span>${t.n_points.toLocaleString()} points · ${dur(t.duration_s)}</span></span>
+        <span class="res" id="res-${t.trip_id}"></span></button>`;
+      $("trips").appendChild(li);
+    });
+    showError("");
+  } catch (e) {
+    stamp($("conn"), "failed", "Offline", true);
+    $("trips").innerHTML = `<li class="empty-rail">Could not reach <code>${base()}</code>. Check the address and that the API is running on Laptop 1.</li>`;
+  }
+}
+
+function select(id) {
+  selected = id;
+  document.querySelectorAll(".trip").forEach(x => x.setAttribute("aria-selected", String(x.dataset.id === id)));
+  const t = trips[id];
+  $("title").textContent = `Trip ${id}`;
+  setText("f_trip", id); setText("f_pts", t.n_points.toLocaleString()); setText("f_dur", dur(t.duration_s));
+  if (!results[id]) stamp($("state"), "queued", "Ready to run");
+  else stamp($("state"), "done", "Matched");
+  $("run").disabled = busy;
+}
+
+$("trips").addEventListener("click", e => { const b = e.target.closest(".trip"); if (b) select(b.dataset.id); });
+
+function loading(on) {
+  ["m1", "m2", "m3", "m4"].forEach(id => $(id).classList.toggle("skel", on));
+  ["s1", "s2", "s3", "s4"].forEach(id => $(id).classList.toggle("skel", on));
+}
+
+async function run() {
+  if (!selected || busy) return;
+  busy = true; $("run").disabled = true; $("run").textContent = "Running…"; showError("");
+  stamp($("state"), "running", "Running"); loading(true);
+  const id = selected;
+  try {
+    const r = await fetch(base() + "/predict", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                 body: JSON.stringify({ trip_id: id }) });
+    if (!r.ok) throw new Error(`the API returned HTTP ${r.status}`);
+    const text = await r.text();
+    const d = JSON.parse(text);
+    results[id] = d;
+    if (selected === id) render(d, text.length);
+    $("res-" + id).textContent = pct(d.metrics.point_accuracy_hmm);
+  } catch (e) {
+    stamp($("state"), "failed", "Failed", true);
+    showError(`Map matching failed: ${e.message}. Check that the API on Laptop 1 is still running.`);
+  } finally {
+    loading(false); busy = false; $("run").disabled = !selected; $("run").textContent = "Run map matching";
+  }
+}
+
+function render(d, bytes) {
+  const m = d.metrics;
+  stamp($("state"), "done", "Matched", true);
+  const diff = m.point_accuracy_hmm != null ? (m.point_accuracy_hmm - m.point_accuracy_classifier) * 100 : null;
+  $("m1").textContent = pct(m.point_accuracy_hmm);
+  $("m1").classList.toggle("up", diff != null && diff > 0);
+  $("s1").textContent = diff == null ? "no reference available" : `${diff >= 0 ? "+" : ""}${diff.toFixed(1)} pts over classifier only`;
+  $("m2").textContent = pct(m.point_accuracy_classifier); $("s2").textContent = "top candidate per point";
+  $("m3").textContent = m.route_f1 == null ? "n/a" : m.route_f1.toFixed(3);
+  $("s3").textContent = m.route_len_f1 == null ? "" : `length-weighted ${m.route_len_f1.toFixed(3)}`;
+  $("m4").textContent = pct(m.route_continuity_hmm); $("s4").textContent = `classifier only ${pct(m.route_continuity_classifier)}`;
+
+  setText("f_time", `${d.processing_s.toFixed(2)} s`); setText("f_seg", d.matched_segments.toLocaleString());
+  setText("f_scored", (m.evaluated_points ?? 0).toLocaleString());
+
+  $("mapNote").hidden = true; $("legend").hidden = false; $("mapwrap").classList.remove("empty");
+  if (layers) layers.remove();
+  const gps = d.points.map(p => [p.lat, p.lon]);
+  layers = L.layerGroup([
+    L.layerGroup(gps.map(ll => L.circleMarker(ll, { radius: 3, color: "#6f7a79", weight: 0, fillOpacity: .8 }))),
+    L.polyline(d.route_path, { color: "#0b5e57", weight: 4, opacity: .7 }),
+    L.circleMarker(gps[0], { radius: 7, color: "#1f6b45", weight: 3, fillColor: "#fff", fillOpacity: 1 }).bindTooltip("Start"),
+    L.circleMarker(gps[gps.length - 1], { radius: 7, color: "#b42318", weight: 3, fillColor: "#fff", fillOpacity: 1 }).bindTooltip("End"),
+  ]).addTo(map);
+  map.invalidateSize();
+  map.fitBounds(L.latLngBounds(gps).pad(0.08));
+
+  $("respMeta").textContent = `HTTP 200 · ${(bytes / 1024).toFixed(1)} KB · ${d.points.length.toLocaleString()} points`;
+  $("rows").innerHTML = d.points.slice(0, 500).map(p =>
+    `<tr><td class="num">${p.i}</td><td class="num">${p.t.toFixed(0)}</td><td>${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}</td>
+     <td class="num">${p.arc ?? "—"}</td><td class="num">${p.p.toFixed(3)}</td></tr>`).join("") +
+    (d.points.length > 500 ? `<tr><td colspan="5" style="font-family:var(--sans);color:var(--ink-3)">Showing the first 500 of ${d.points.length.toLocaleString()} points.</td></tr>` : "");
+}
+
+$("connect").addEventListener("click", connect);
+apiInput.addEventListener("keydown", e => { if (e.key === "Enter") connect(); });
+$("run").addEventListener("click", run);
+document.addEventListener("keydown", e => { if (e.key === "Enter" && e.target === document.body && selected) run(); });
+connect();
+</script>
+</body>
+</html>

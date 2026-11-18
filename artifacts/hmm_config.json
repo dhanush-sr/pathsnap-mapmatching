@@ -1,0 +1,9 @@
+{
+  "beta": 4.0,
+  "w_emit": 0.5,
+  "unreachable": -40.0,
+  "min_limit": 300.0,
+  "limit_factor": 4.0,
+  "gap_s": 5.0,
+  "eps": 0.0001
+}
