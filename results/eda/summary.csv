@@ -1,0 +1,3 @@
+partition,trips,total_obs,median_obs,max_obs,median_nodes,median_arcs,nan_values,invalid_coords,non_increasing_ts,trips_with_gaps_gt_5s,mean_dt1_share,isolated_nodes,median_components,mean_route_contiguity,trips_unreliable_gt_10pct
+student_test,10,19160,1420.0,3958,6596.5,13145.0,0,0,0,2,0.9819896936551981,0,11.0,0.9997319034852546,0
+train,80,208417,1529.0,19313,9608.0,19526.5,0,0,0,45,0.9383341170217598,0,20.0,0.9993461551444497,3
