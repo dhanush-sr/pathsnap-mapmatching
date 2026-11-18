@@ -8,3 +8,5 @@ data/
 *.pdf
 *.xlsx
 results/features_*.pkl
+artifacts/models/RandomForest.joblib
+artifacts/models/KNN.joblib
