@@ -15,6 +15,7 @@ from sklearn.model_selection import GroupKFold
 from .data import ROOT, get_trip
 from .evaluate import argmax_decode, candidate_metrics, continuity
 from .features import FEATURES
+from .tracking import clean_params, mlflow_experiment
 
 SEED = 42
 RES = os.path.join(ROOT, "results")
@@ -77,4 +78,19 @@ def run(spec, tr=None, te=None):
         "infer_ms_per_obs": 1000 * infer / te.groupby(["trip", "obs"]).ngroups,
     }
     print(pd.Series(row).to_string())
+    log_run(spec, est, row, os.path.join(MODELS, f"{spec.NAME}.joblib"))
     return row, folds, p
+
+
+def log_run(spec, est, row, model_path):
+    """Record one trained model in the MLflow experiment 'pathsnap-model-comparison'."""
+    mlflow = mlflow_experiment("pathsnap-model-comparison")
+    if mlflow is None:
+        return
+    with mlflow.start_run(run_name=spec.NAME):
+        mlflow.set_tags({"family": spec.FAMILY, "source": "live training run"})
+        mlflow.log_params({"config": spec.CONFIG, "cv": "5-fold GroupKFold by trip", "seed": SEED,
+                           **clean_params(est.get_params(deep=True))})
+        mlflow.log_metrics({k: float(v) for k, v in row.items() if isinstance(v, (int, float))})
+        if os.path.getsize(model_path) < 50e6:
+            mlflow.log_artifact(model_path, "model")
