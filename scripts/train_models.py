@@ -22,10 +22,11 @@ from sklearn.preprocessing import StandardScaler
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathsnap.data import ROOT
 from pathsnap.features import FEATURES
-from pathsnap.models import ALL
+from pathsnap.models import gaussian_nb, knn, lightgbm_model, logistic_regression, mlp, random_forest
 from pathsnap.training import SEED, load, run
 
 RES, PLOTS = (os.path.join(ROOT, p) for p in ("results", "results/plots"))
+ALL = [logistic_regression, gaussian_nb, knn, random_forest, lightgbm_model, mlp]
 
 
 def main():
