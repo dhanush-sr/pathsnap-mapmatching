@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+Student folder/
+data/
+*.pdf
+*.xlsx
+results/features_*.pkl
