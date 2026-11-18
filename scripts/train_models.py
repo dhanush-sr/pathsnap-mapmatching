@@ -1,4 +1,4 @@
-"""Train and compare candidate classifiers from six algorithm families.
+"""Train and compare the six candidate classifiers defined in pathsnap/models/.
 
 - 5-fold GroupKFold over the 80 training trips (a trip never spans folds)
 - refit on all training trips, evaluate on the 10 student-testing trips
@@ -7,109 +7,34 @@
 import json
 import os
 import sys
-import time
 
-import joblib
 import lightgbm as lgb
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.base import clone
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import ConfusionMatrixDisplay, log_loss
-from sklearn.model_selection import GroupKFold, GroupShuffleSplit
-from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.neural_network import MLPClassifier
-from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from pathsnap.data import ROOT, get_trip
-from pathsnap.evaluate import argmax_decode, candidate_metrics, continuity
+from pathsnap.data import ROOT
 from pathsnap.features import FEATURES
+from pathsnap.models import ALL
+from pathsnap.training import SEED, load, run
 
-SEED = 42
-RES, PLOTS, MODELS = (os.path.join(ROOT, p) for p in ("results", "results/plots", "artifacts/models"))
-
-MODEL_SPECS = {
-    "LogisticRegression": ("Linear", "C=1.0, L2, lbfgs, standardised",
-                           make_pipeline(StandardScaler(), LogisticRegression(C=1.0, max_iter=2000))),
-    "GaussianNB": ("Probabilistic", "var_smoothing=1e-9", GaussianNB()),
-    "KNN": ("Instance-based", "k=25, distance-weighted, standardised",
-            make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=25, weights="distance", n_jobs=-1))),
-    "RandomForest": ("Ensemble (bagging)", "200 trees, min_samples_leaf=5, sqrt features",
-                     RandomForestClassifier(n_estimators=200, min_samples_leaf=5, n_jobs=-1, random_state=SEED)),
-    "LightGBM": ("Boosting", "400 trees, lr=0.05, 31 leaves",
-                 lgb.LGBMClassifier(n_estimators=400, learning_rate=0.05, num_leaves=31,
-                                    random_state=SEED, verbose=-1)),
-    "MLP": ("Neural network", "64-32 ReLU, adam, alpha=1e-4, early stopping",
-            make_pipeline(StandardScaler(), MLPClassifier(hidden_layer_sizes=(64, 32), alpha=1e-4,
-                                                          early_stopping=True, max_iter=60, random_state=SEED))),
-}
-
-
-def load():
-    tr = pd.read_pickle(os.path.join(RES, "features_train.pkl"))
-    te = pd.read_pickle(os.path.join(RES, "features_student_test.pkl"))
-    return tr, te
-
-
-def route_continuity(model_proba, te):
-    vals = []
-    for t, d in te.groupby("trip"):
-        dec = argmax_decode(d.reset_index(drop=True), model_proba[d.index.values])
-        vals.append(continuity(get_trip("student_test", t), [dec[k] for k in sorted(dec)]))
-    return float(np.mean(vals))
-
-
-def cross_validate(name, est, tr):
-    rows = []
-    for fold, (a, b) in enumerate(GroupKFold(n_splits=5).split(tr, groups=tr["trip"])):
-        m = clone(est).fit(tr.iloc[a][FEATURES], tr.iloc[a]["label"])
-        p = m.predict_proba(tr.iloc[b][FEATURES])[:, 1]
-        r = candidate_metrics(tr.iloc[b], p)
-        p_tr = m.predict_proba(tr.iloc[a][FEATURES])[:, 1]
-        r["train_macro_f1"] = candidate_metrics(tr.iloc[a], p_tr)["macro_f1"]
-        rows.append({"model": name, "fold": fold, **r})
-        print(f"  {name} fold {fold}: macroF1={r['macro_f1']:.4f} top1={r['top1_accuracy']:.4f}")
-    return rows
+RES, PLOTS = (os.path.join(ROOT, p) for p in ("results", "results/plots"))
 
 
 def main():
-    for d in (PLOTS, MODELS):
-        os.makedirs(d, exist_ok=True)
+    os.makedirs(PLOTS, exist_ok=True)
     tr, te = load()
-    te_rel = te[te["reliable"]]
-    folds, summary, probas = [], [], {}
-    for name, (family, cfg, est) in MODEL_SPECS.items():
-        print(name)
-        folds += cross_validate(name, est, tr)
-        t0 = time.time()
-        m = clone(est).fit(tr[FEATURES], tr["label"])
-        train_time = time.time() - t0
-        t0 = time.time()
-        p = m.predict_proba(te[FEATURES])[:, 1]
-        infer = time.time() - t0
-        probas[name] = p
-        joblib.dump(m, os.path.join(MODELS, f"{name}.joblib"))
-        r = candidate_metrics(te_rel, p[te["reliable"].values])
-        cv = pd.DataFrame([f for f in folds if f["model"] == name])
-        summary.append({
-            "model": name, "family": family, "config": cfg,
-            "cv_macro_f1": cv.macro_f1.mean(), "cv_macro_f1_std": cv.macro_f1.std(),
-            "cv_top1": cv.top1_accuracy.mean(), "cv_log_loss": cv.log_loss.mean(),
-            "cv_train_macro_f1": cv.train_macro_f1.mean(),
-            "test_top1": r["top1_accuracy"], "test_macro_f1": r["macro_f1"],
-            "test_precision": r["precision"], "test_recall": r["recall"], "test_log_loss": r["log_loss"],
-            "route_continuity": route_continuity(p, te),
-            "train_time_s": train_time, "infer_time_s": infer,
-            "infer_ms_per_obs": 1000 * infer / te.groupby(["trip", "obs"]).ngroups,
-        })
-        print(pd.Series(summary[-1]).to_string())
+    summary, folds, probas = [], [], {}
+    for spec in ALL:
+        row, f, p = run(spec, tr, te)
+        summary.append(row); folds += f; probas[spec.NAME] = p
     pd.DataFrame(folds).to_csv(os.path.join(RES, "cv_folds.csv"), index=False)
     S = pd.DataFrame(summary)
     S.to_csv(os.path.join(RES, "model_comparison.csv"), index=False)
