@@ -1,0 +1,22 @@
+                  gain_share  perm_logloss_increase  perm_std              group
+ctx_heading_diff      0.2281                 0.2198    0.0045            context
+gauss_share           0.0365                 0.0414    0.0019           distance
+dist_gap              0.0469                 0.0322    0.0007           distance
+ctx_dist_mean         0.0300                 0.0289    0.0008            context
+end_clipped           0.0173                 0.0283    0.0002  geometry/topology
+heading_x_speed       0.0429                 0.0168    0.0004            heading
+dist                  0.0048                 0.0122    0.0011           distance
+dist_ratio            0.2873                 0.0068    0.0003           distance
+proj_frac             0.1065                 0.0036    0.0004  geometry/topology
+speed                 0.0224                 0.0032    0.0002            heading
+from_out_deg          0.0054                 0.0028    0.0005  geometry/topology
+n_within_30           0.0040                 0.0017    0.0002           distance
+to_in_deg             0.0037                 0.0014    0.0002  geometry/topology
+heading_diff          0.0037                 0.0006    0.0001            heading
+dist_rank             0.1439                 0.0005    0.0002           distance
+arc_len               0.0166                 0.0004    0.0002  geometry/topology
+{'config': 'all features', 'n_features': 16, 'cv_macro_f1': np.float64(0.9362519508747683), 'cv_top1': np.float64(0.8905958831361055), 'cv_log_loss': np.float64(0.06396609003105772)}
+{'config': 'without distance', 'n_features': 10, 'cv_macro_f1': np.float64(0.9254649877179952), 'cv_top1': np.float64(0.8933066288494856), 'cv_log_loss': np.float64(0.07884724579397294)}
+{'config': 'without heading', 'n_features': 13, 'cv_macro_f1': np.float64(0.9363727921005037), 'cv_top1': np.float64(0.8897964540915329), 'cv_log_loss': np.float64(0.06442985254484528)}
+{'config': 'without context', 'n_features': 14, 'cv_macro_f1': np.float64(0.9237327418523158), 'cv_top1': np.float64(0.8701904316041439), 'cv_log_loss': np.float64(0.0760356333267445)}
+{'config': 'without geometry/topology', 'n_features': 11, 'cv_macro_f1': np.float64(0.9333957422178486), 'cv_top1': np.float64(0.8893847529346849), 'cv_log_loss': np.float64(0.06964628174985137)}
