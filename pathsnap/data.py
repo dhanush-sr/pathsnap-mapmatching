@@ -11,8 +11,13 @@ EARTH_R = 6371008.8
 CROP_MARGIN_M = 400.0
 
 
+def partition_dir(partition):
+    """A partition name inside DATA_DIR (train, student_test) or a path to any folder of trip folders."""
+    return partition if os.path.isdir(partition) else os.path.join(DATA_DIR, partition)
+
+
 def trip_ids(partition):
-    d = os.path.join(DATA_DIR, partition)
+    d = partition_dir(partition)
     return sorted(x for x in os.listdir(d) if os.path.isdir(os.path.join(d, x)))
 
 
@@ -22,7 +27,7 @@ def _read(path, dtype=float):
 
 
 def load_raw(partition, trip, with_route=True):
-    base = os.path.join(DATA_DIR, partition, trip, trip)
+    base = os.path.join(partition_dir(partition), trip, trip)
     raw = {
         "track": _read(base + ".track"),
         "nodes": _read(base + ".nodes"),
