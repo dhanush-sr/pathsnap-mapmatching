@@ -1,0 +1,59 @@
+{
+  "best_params": {
+    "n_estimators": 521,
+    "learning_rate": 0.0466430028566115,
+    "num_leaves": 247,
+    "min_child_samples": 278,
+    "subsample": 0.9792369428736144,
+    "colsample_bytree": 0.5601329695729234,
+    "reg_lambda": 2.1430365968299103,
+    "scale_pos_weight": 1.647129749635706
+  },
+  "best_cv_macro_f1": 0.9404975567658713,
+  "n_trials": 40,
+  "search_space": {
+    "n_estimators": [
+      "int",
+      100,
+      1000
+    ],
+    "learning_rate": [
+      "log",
+      0.01,
+      0.2
+    ],
+    "num_leaves": [
+      "int",
+      15,
+      255
+    ],
+    "min_child_samples": [
+      "int",
+      10,
+      300
+    ],
+    "subsample": [
+      "float",
+      0.5,
+      1.0
+    ],
+    "colsample_bytree": [
+      "float",
+      0.4,
+      1.0
+    ],
+    "reg_lambda": [
+      "log",
+      0.001,
+      10.0
+    ],
+    "scale_pos_weight": [
+      "float",
+      1.0,
+      4.0
+    ]
+  },
+  "objective": "mean 5-fold GroupKFold macro F1",
+  "sampler": "TPE (seed 42)",
+  "search_time_s": 4057.7290890216827
+}

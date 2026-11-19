@@ -1,0 +1,30 @@
+{
+  "features": [
+    "dist",
+    "dist_rank",
+    "dist_gap",
+    "dist_ratio",
+    "heading_diff",
+    "speed",
+    "heading_x_speed",
+    "arc_len",
+    "proj_frac",
+    "end_clipped",
+    "ctx_dist_mean",
+    "ctx_heading_diff",
+    "n_within_30",
+    "from_out_deg",
+    "to_in_deg",
+    "gauss_share"
+  ],
+  "params": {
+    "n_estimators": 521,
+    "learning_rate": 0.0466430028566115,
+    "num_leaves": 247,
+    "min_child_samples": 278,
+    "subsample": 0.9792369428736144,
+    "colsample_bytree": 0.5601329695729234,
+    "reg_lambda": 2.1430365968299103,
+    "scale_pos_weight": 1.647129749635706
+  }
+}
